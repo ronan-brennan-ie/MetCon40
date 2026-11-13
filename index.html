@@ -20,7 +20,12 @@ const exercises=[
 ['Shuttle runs','Cones / shuttle-run space','cardio','Run between cones, slow before turning, then accelerate smoothly.'],
 ['Push-ups','Exercise mat','body','Brace trunk, lower as one unit and press up; use an incline if needed.'],
 ['Bodyweight squats','Exercise mat','body','Sit hips back and down within comfortable range; stand tall.'],
-['Wall sit','Exercise mat','body','Back against wall, slide down to comfortable depth and breathe steadily.']
+['Wall sit','Exercise mat','body','Back against wall, slide down to comfortable depth and breathe steadily.'],
+['TRX-assisted reverse lunges','TRX straps','strength','Hold the straps lightly for balance. Step one foot back, bend both knees only as far as comfortable, then return to standing. Alternate legs; avoid hip pinching.'],
+['TRX chest press','TRX straps','strength','Face away from the anchor, keep your body straight and bend elbows to lower your chest between your hands. Press back up; move feet to adjust difficulty.'],
+['Dumbbell farmer\'s carries','Dumbbells','strength','Walk tall with a dumbbell in each hand, shoulders relaxed and core braced. Use short controlled steps and turn carefully.'],
+['Kettlebell goblet squats','Kettlebells','strength','Hold the kettlebell close to your chest. Sit down and back to a comfortable depth, keep heels planted and stand tall.'],
+['Dumbbell shoulder press','Dumbbells','strength','With dumbbells at shoulder height, brace your core and press overhead without arching your back. Lower slowly and use a comfortable range.']
 ].map(([name,gear,type,desc])=>({name,gear,type,desc}));
 const warm=[['Easy march','Walk or march in place, moving arms gently.'],['Hip hinge','Push hips backward with soft knees, then stand tall.'],['Shoulder circles','Circle shoulders gently both ways.'],['Side steps','Step side to side with soft knees.'],['Shallow squats','Squat to a comfortable depth and rise.']];
 const cool=[['Good mornings','Stand tall with soft knees and hands on hips. Gently hinge forward at the hips with a neutral back, then return upright. Move slowly and stay comfortable.'],['Standing glute stretch','Hold a stable support. Cross one ankle over the opposite thigh and sit back gently; switch legs after 30 seconds. Skip if your hip feels pinched.'],['Calf and hamstring stretches','First 30 seconds: stretch each calf with heel down. Next 30 seconds: extend one leg slightly forward, hinge gently at the hips, and alternate sides.'],['Chest and shoulder opener','Open arms gently behind your body without forcing the shoulders. Then bring one arm across the chest and switch sides halfway.'],['Gentle neck mobility and breathing','Slowly turn your head left and right, then tilt ear toward shoulder on each side. Avoid full neck circles or forcing the range; finish with calm, slow breaths.']];
@@ -29,7 +34,36 @@ const saved=(()=>{try{return JSON.parse(localStorage.getItem('metcon-gear'))}cat
 $('equipment').innerHTML=gear.map(g=>'<label><input type="checkbox" data-gear="'+g+'" '+(!saved||saved.includes(g)?'checked':'')+'> '+g+'</label>').join('');
 let rounds=[],timeline=[],index=0,elapsed=0,running=false,stamp=0,handle=null,audio=null,lastBeep=-1;
 function shuffled(a){a=[...a];for(let i=a.length-1;i>0;i--){let j=Math.floor(Math.random()*(i+1));[a[i],a[j]]=[a[j],a[i]]}return a}
-function plan(){const selected=[...document.querySelectorAll('[data-gear]:checked')].map(e=>e.dataset.gear);try{localStorage.setItem('metcon-gear',JSON.stringify(selected))}catch{}const pool=exercises.filter(e=>selected.includes(e.gear));if(pool.length<2){alert('Select equipment for at least two exercises.');return false}if($('mode').value==='fixed'){rounds=fixed.map(pair=>pair.map((name,i)=>pool.find(e=>e.name===name)||pool[(i+1)%pool.length]));}else{const cardio=shuffled(pool.filter(e=>e.type==='cardio'));const strength=shuffled(pool.filter(e=>e.type!=='cardio'));const all=shuffled(pool);rounds=Array.from({length:6},(_,i)=>{let a=(i%2===0?cardio.shift():strength.shift())||all[i%all.length];let b=strength.shift()||cardio.shift()||all.find(e=>e!==a)||all[0];if(a===b)b=all.find(e=>e!==a)||b;return[a,b]});}$('plan').innerHTML=rounds.map((r,i)=>'<div class="round"><b>Round '+(i+1)+' · 4:00</b><div>A: '+r[0].name+' / B: '+r[1].name+'</div><small> A → B → A → B · 45s / 15s</small></div>').join('');return true}
+const patterns={
+'Bike':'cardio','Row':'cardio','SkiErg':'cardio','Shuttle runs':'cardio',
+'Kettlebell swing':'hinge','Dumbbell RDL':'hinge','Good mornings':'hinge',
+'Wall ball throws':'squat','Box step-ups':'squat','Bodyweight squats':'squat','Wall sit':'squat','Kettlebell goblet squats':'squat','TRX-assisted reverse lunges':'squat',
+'TRX rows':'pull','TRX chest press':'push','Bench dips':'push','Push-ups':'push','Dumbbell shoulder press':'push',
+'Ball slams':'power','Dumbbell farmer\'s carries':'carry'};
+function shuffleRounds(pool){
+ const pattern=e=>patterns[e.name]||e.type;
+ const counts=new Map(),lastUsed=new Map(),patternLast=new Map(),result=[];
+ for(let i=0;i<6;i++){
+  const candidates=[];
+  for(const a of pool)for(const b of pool){
+   if(a===b)continue;
+   const pa=pattern(a),pb=pattern(b);
+   const samePattern=pa===pb;
+   const reuse=(counts.get(a.name)||0)+(counts.get(b.name)||0);
+   const recent=(i-(lastUsed.get(a.name)??-10)<=1?1:0)+(i-(lastUsed.get(b.name)??-10)<=1?1:0);
+   const patternRecent=(i-(patternLast.get(pa)??-10)<=1?1:0)+(i-(patternLast.get(pb)??-10)<=1?1:0);
+   const cardioBalance=(pa==='cardio')!==(pb==='cardio')?0:2;
+   const score=samePattern*12+recent*7+reuse*3+patternRecent*2+cardioBalance+Math.random()*2;
+   candidates.push({a,b,pa,pb,score});
+  }
+  candidates.sort((x,y)=>x.score-y.score);
+  const chosen=candidates[0];
+  result.push([chosen.a,chosen.b]);
+  for(const [e,p] of [[chosen.a,chosen.pa],[chosen.b,chosen.pb]]){counts.set(e.name,(counts.get(e.name)||0)+1);lastUsed.set(e.name,i);patternLast.set(p,i)}
+ }
+ return result;
+}
+function plan(){const selected=[...document.querySelectorAll('[data-gear]:checked')].map(e=>e.dataset.gear);try{localStorage.setItem('metcon-gear',JSON.stringify(selected))}catch{}const pool=exercises.filter(e=>selected.includes(e.gear));if(pool.length<2){alert('Select equipment for at least two exercises.');return false}if($('mode').value==='fixed'){rounds=fixed.map(pair=>pair.map((name,i)=>pool.find(e=>e.name===name)||pool[(i+1)%pool.length]));}else{rounds=shuffleRounds(pool);}$('plan').innerHTML=rounds.map((r,i)=>'<div class="round"><b>Round '+(i+1)+' · 3:45</b><div>A: '+r[0].name+' / B: '+r[1].name+'</div><small> A → B → A → B · 45s work / 15s change between exercises</small></div>').join('');return true}
 function build(){timeline=[];warm.forEach(([name,desc],i)=>timeline.push({kind:'Warm-up',name,desc,duration:60,position:(i+1)+'/5'}));timeline.push({kind:'SET UP',name:'Prepare equipment',desc:'Position equipment and get ready for Round 1.',duration:60,position:'One minute before Round 1'});rounds.forEach((r,i)=>{for(let j=0;j<4;j++){const e=r[j%2];timeline.push({kind:'WORK',...e,duration:45,position:'Round '+(i+1)+'/6 · minute '+(j+1)+'/4'});if(j<3){const next=r[(j+1)%2];timeline.push({kind:'CHANGE STATIONS',...next,duration:15,position:'Round '+(i+1)+'/6 · transition'});}}if(i<5)timeline.push({kind:'RECOVERY',name:'Prepare for Round '+(i+2),desc:'One minute to change stations and get ready for Round '+(i+2)+'.',duration:60,position:'Round '+(i+1)+' complete · next Round '+(i+2),nextRound:i+2,nextExercise:rounds[i+1][0].name});});timeline.push({kind:'FINAL RECOVERY',name:'Recover and return equipment',desc:'Take one minute to recover, replace equipment safely and prepare for the cool-down.',duration:60,position:'Round 6 complete · cool-down next'});cool.forEach(([name,desc],i)=>timeline.push({kind:'Cool-down',name,desc,duration:40,position:(i+1)+'/5'}))}
 function time(s){s=Math.max(0,Math.ceil(s));return String(Math.floor(s/60)).padStart(2,'0')+':'+String(s%60).padStart(2,'0')}
 function icon(){return '<svg viewBox="0 0 100 100" role="img" aria-label="Schematic person exercising"><circle cx="50" cy="16" r="9" fill="#ffcd6b"/><path d="M50 29V57 M50 36L27 47 M50 36L75 47 M50 57L30 85 M50 57L72 85" fill="none" stroke="#e8f1ff" stroke-width="6" stroke-linecap="round"/><path d="M15 92H85" stroke="#6ce6b9" stroke-width="4"/></svg>'}
