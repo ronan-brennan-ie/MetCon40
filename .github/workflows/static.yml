@@ -1,5 +1,4 @@
 # Simple workflow for deploying static content to GitHub Pages
-# Republish latest main branch (MetCon 40 title correction).
 name: Deploy static content to Pages
 
 on:
@@ -39,6 +38,9 @@ jobs:
         with:
           # Upload entire repository
           path: '.'
+          name: pages-${{ github.run_id }}-${{ github.run_attempt }}
       - name: Deploy to GitHub Pages
         id: deployment
         uses: actions/deploy-pages@v5
+        with:
+          artifact_name: pages-${{ github.run_id }}-${{ github.run_attempt }}
